@@ -1,0 +1,11 @@
+
+Requirements: twisted and python-magic
+
+Usage: python lfpw_download.py
+
+and enjoy the download bars !
+
+For more information consult 
+http://homes.cs.washington.edu/~neeraj/databases/base/databases/lfpw/
+
+If you have issues with script, feel free to open a ticket.
