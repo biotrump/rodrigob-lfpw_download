@@ -8,6 +8,10 @@ Requires TwistedMatrix,
 the cool python event-driven networking engine
 http://twistedmatrix.com
 
+and python-magic
+https://github.com/ahupp/python-magic
+
+
 Code inspired by
 http://technicae.cogitat.io
 /2008/06/async-batching-with-twisted-walkthrough.html
@@ -16,18 +20,19 @@ http://as.ynchrono.us/2006/05/limiting-parallelism_22.html
 and
 http://laconsigna.wordpress.com/2012/11/23/script-for-downloading-lfpw
 
-Simply copy the csv files on the side of this python program,
-and then launch it.
+We assume that the proper csv files are on the side of this python program.
+USAGE: Simply launch the program and enjoy the download bars progress.
 """
 
 from __future__ import print_function
 
 import os.path
 import csv
-import threading
+
 from twisted.internet import reactor, defer, task
 from twisted.web.client import downloadPage
-#from twisted.python import log
+
+import magic
 
 from progressbar import ProgressBar, Percentage, Bar, ETA, AdaptiveETA
 from colors import red, green, blue
@@ -43,16 +48,31 @@ progress_bar_widgets = [
 
 progress_bar = None
 errors = []
-counter_lock = threading.Lock()
 
 
-def non_thread_safe_increment(url, value, error, reactor):
+class FakeFailure:
+    """
+    Helper class that emulates
+    http://twistedmatrix.com
+    /documents/current/api/twisted.python.failure.Failure.html
+    """
+
+    def __init__(self, message):
+        self.message = message
+
+    def getErrorMessage(self):
+        return self.message
+
+
+def non_thread_safe_increment(url, value, error):
     """
     We assume this method is called in a thread safe way
     """
     #print("Counter incremented from ", threading.current_thread())
     global counter_lock, counter, fail_counter, progress_bar
     counter += 1
+    if value is not None:
+        print("Value == ", value)
     if error is not None:
         errors.append((url, error))
         fail_counter += 1
@@ -60,10 +80,28 @@ def non_thread_safe_increment(url, value, error, reactor):
     return
 
 
-def increment_progress_bar(url, value, error, reactor):
+def increment_progress_bar(file_path, url, value, error):
+
+    if error is None and os.path.exists(file_path):
+        mime = magic.from_file(file_path, mime=True)
+        if not mime.startswith("image"):
+            os.remove(file_path)
+            message = "Removed file %s because its mime type is %s" \
+                      % (os.path.basename(file_path), mime)
+            error = FakeFailure(message)
+        elif mime.endswith("jpeg"):
+            # all good, nothing to do
+            pass
+        else:
+            new_extension = "." + mime.split("/")[1]
+            new_file_path = os.path.splitext(file_path)[0] + new_extension
+            os.rename(file_path, new_file_path)
+    else:
+        # all is good !
+        pass
 
     reactor.callFromThread(non_thread_safe_increment,
-                           url, value, error, reactor)
+                           url, value, error)
     return
 
 
@@ -97,10 +135,10 @@ def twisted_parallel(iterable, count, callable, *args, **named):
 
 
 def download_url((url, file_path)):
-    d = downloadPage(url, file_path, timeout=5)
+    d = downloadPage(url, file_path, timeout=10)
     d.addCallbacks(
-        lambda value: increment_progress_bar(url, value, None, reactor),
-        lambda error: increment_progress_bar(url, None, error, reactor)
+        lambda value: increment_progress_bar(file_path, url, value, None),
+        lambda error: increment_progress_bar(file_path, url, None, error)
     )
 
     return d
@@ -134,7 +172,7 @@ def download_urls(urls, save_path):
         urls_and_file_paths.append((url, file_path))
     # end of "for each url"
 
-    max_parallel_downloads = 20
+    max_parallel_downloads = 10
     d = twisted_parallel(urls_and_file_paths,
                          max_parallel_downloads,
                          download_url)
@@ -173,10 +211,11 @@ def check_download_folder_exist():
 
     if not os.path.exists("./train"):
         os.mkdir("./train")
-        print("Created downloaded ")
+        print("Created downloads folder ./train")
 
     if not os.path.exists("./test"):
         os.mkdir("./test")
+        print("Created downloads folder ./test")
 
     return
 
@@ -222,6 +261,8 @@ def main():
     reactor.callWhenRunning(reactor_main, train_urls, test_urls)
 
     reactor.run()
+
+    downloads_finished()
     print("End of game, have a nice day !")
     return
 

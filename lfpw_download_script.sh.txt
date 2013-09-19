@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+
+# Script obtained from http://laconsigna.wordpress.com/2012/11/23/script-for-downloading-lfpw
+# The python code of this project attempts to be an improved version of it
+
+awk '/average/ {
+  result = ""
+  download = ""
+  name = ""
+  cmd = "wget -t 1 -nv " $1 " 2>&1"
+  while ( (cmd | getline line) > 0 )
+    result = result " " line
+  close(cmd)
+  print "res: " result > "/dev/stderr"
+  if (result != "" && match(result,/ERROR/) == 0) {
+    match(result,/".+"/);
+    downloaded = substr(result,RSTART+1,RLENGTH-2)
+    print "file: " downloaded > "/dev/stderr"
+    if (match(downloaded,/\.(htm|php|gif)/) != 0) {
+      print "deleting: " downloaded > "/dev/stderr"
+      system("rm \"" downloaded "\"")
+    } else {
+      if( match(tolower(downloaded),/\.(jpg|jpeg|bmp|png)$/) == 0 ) {
+        if( match(tolower(downloaded),/\.(jpg|jpeg|bmp|png)/) != 0 )
+          downloaded_fix = substr(downloaded,1,RSTART) substr(downloaded,RSTART+RLENGTH+1,length(downloaded))
+        else
+          downloaded_fix = downloaded
+        name = downloaded_fix ".jpg"
+        print "adding ext: " downloaded_fix > "/dev/stderr"
+        system("mv \"" downloaded "\" \"" name "\"")
+      } else
+        name=downloaded
+      print "writting: " name > "/dev/stderr"
+      print name, $0
+    }
+  } else
+    print "skipping: " name > "/dev/stderr"
+  print "\n" > "/dev/stderr"
+}' ../kbvt_lfpw_v1_train.csv > ../fixed_train.txt 2> ../train.log
